@@ -5,15 +5,19 @@ The module provides a lazy-loading/importing mechanism.
 """
 
 from __future__ import absolute_import
+import pytest
 from behave.importer import LazyObject, LazyDict, load_module, parse_scoped_name
 from behave.formatter.base import Formatter
-from nose.tools import eq_, assert_raises
 import sys
 import types
 # import unittest
 
 
-class TestTheory(object): pass
+class TestTheory(object):
+    """Marker for test-theory classes as syntactic sugar."""
+    pass
+
+
 class ImportModuleTheory(TestTheory):
     """
     Provides a test theory for importing modules.
@@ -38,14 +42,16 @@ class ImportModuleTheory(TestTheory):
     @staticmethod
     def assert_module_with_name(module, name):
         assert isinstance(module, types.ModuleType)
-        eq_(module.__name__, name)
+        assert module.__name__ == name
 
 
 class TestLoadModule(object):
     theory = ImportModuleTheory
 
     def test_load_module__should_fail_for_unknown_module(self):
-        assert_raises(ImportError, load_module, "__unknown_module__")
+        with pytest.raises(ImportError) as e:
+            load_module("__unknown_module__")
+        # OLD: assert_raises(ImportError, load_module, "__unknown_module__")
 
     def test_load_module__should_succeed_for_already_imported_module(self):
         module_name = "behave.importer"
@@ -56,12 +62,13 @@ class TestLoadModule(object):
         self.theory.assert_module_is_imported(module_name)
 
     def test_load_module__should_succeed_for_existing_module(self):
-        module_name = "test._importer_candidate"
+        module_name = "tests.unit._importer_candidate"
         self.theory.ensure_module_is_not_imported(module_name)
 
         module = load_module(module_name)
         self.theory.assert_module_with_name(module, module_name)
         self.theory.assert_module_is_imported(module_name)
+
 
 class TestLazyObject(object):
 
@@ -80,11 +87,13 @@ class TestLazyObject(object):
 
     def test_get__should_fail_for_unknown_module(self):
         lazy = LazyObject("__unknown_module__", "xxx")
-        assert_raises(ImportError, lazy.get)
+        with pytest.raises(ImportError):
+            lazy.get()
 
     def test_get__should_fail_for_unknown_object_in_module(self):
         lazy = LazyObject("test._importer_candidate", "xxx")
-        assert_raises(ImportError, lazy.get)
+        with pytest.raises(ImportError):
+            lazy.get()
 
 
 class LazyDictTheory(TestTheory):
@@ -118,7 +127,8 @@ class TestLazyDict(object):
     def test_unknown_item_access__should_raise_keyerror(self):
         lazy_dict = LazyDict({"alice": 42})
         item_access = lambda key: lazy_dict[key]
-        assert_raises(KeyError, item_access, "unknown")
+        with pytest.raises(KeyError):
+            item_access("unknown")
 
     def test_plain_item_access__should_succeed(self):
         theory = LazyDictTheory
@@ -126,7 +136,7 @@ class TestLazyDict(object):
         theory.assert_item_is_not_lazy(lazy_dict, "alice")
 
         value = lazy_dict["alice"]
-        eq_(value, 42)
+        assert value == 42
 
     def test_lazy_item_access__should_load_object(self):
         ImportModuleTheory.ensure_module_is_not_imported("inspect")
@@ -141,11 +151,13 @@ class TestLazyDict(object):
     def test_lazy_item_access__should_fail_with_unknown_module(self):
         lazy_dict = LazyDict({"bob": LazyObject("__unknown_module__", "xxx")})
         item_access = lambda key: lazy_dict[key]
-        assert_raises(ImportError, item_access, "bob")
+        with pytest.raises(ImportError):
+            item_access("bob")
 
     def test_lazy_item_access__should_fail_with_unknown_object(self):
         lazy_dict = LazyDict({
             "bob": LazyObject("behave.importer", "XUnknown")
         })
         item_access = lambda key: lazy_dict[key]
-        assert_raises(ImportError, item_access, "bob")
+        with pytest.raises(ImportError):
+            item_access("bob")

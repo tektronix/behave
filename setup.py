@@ -76,7 +76,7 @@ setup(
     # SUPPORT: python2.7, python3.3 (or higher)
     python_requires=">=2.7, !=3.0.*, !=3.1.*, !=3.2.*",
     install_requires=[
-        "cucumber-tag-expressions >= 1.1.1",
+        "cucumber-tag-expressions >= 1.1.2",
         "parse >= 1.8.2",
         "parse_type >= 0.4.2",
         "six >= 1.12.0",
@@ -86,13 +86,11 @@ setup(
         "win_unicode_console; python_version < '3.6'",
         "colorama",
     ],
-    test_suite="nose.collector",
     tests_require=[
-        "pytest >= 3.0",
+        "pytest >= 4.2",
         "pytest-html >= 1.19.0",
-        "nose >= 1.3",
         "mock >= 1.1",
-        "PyHamcrest >= 1.8",
+        "PyHamcrest >= 1.9",
         "path.py >= 11.5.0"
     ],
     cmdclass = {
@@ -105,7 +103,7 @@ setup(
         ],
         "develop": [
             "coverage",
-            "pytest >= 3.0",
+            "pytest >= 4.2",
             "pytest-html >= 1.19.0",
             "pytest-cov",
             "tox",
@@ -133,6 +131,7 @@ setup(
         "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: Jython",
         "Programming Language :: Python :: Implementation :: PyPy",

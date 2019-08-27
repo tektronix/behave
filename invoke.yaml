@@ -23,12 +23,6 @@ sphinx:
     languages:
       - de
       # PREPARED: - zh-CN
-cleanup:
-    extra_directories:
-      - "build"
-      - "dist"
-      - "__WORKDIR__"
-      - reports
 
 cleanup:
     extra_directories:
@@ -36,11 +30,18 @@ cleanup:
       - "dist"
       - "__WORKDIR__"
       - reports
+
+    extra_files:
+      - "etc/gherkin/gherkin*.json.SAVED"
+      - "etc/gherkin/i18n.py"
 
 cleanup_all:
     extra_directories:
       - .hypothesis
       - .pytest_cache
+
+    extra_files:
+      - "**/testrun*.json"
 
 behave_test:
     scopes:

@@ -29,6 +29,36 @@ else:
     import traceback
 
 
+# ---------------------------------------------------------------------------
+# MODEL UTILITIES:
+# ---------------------------------------------------------------------------
+def reset_steps(steps):
+    for step in steps:
+        step.reset()
+    return steps
+
+
+def copy_steps(steps):
+    """Copy steps; needed if steps should be used in multiple run contexts.
+
+    :param steps:       List of steps to copy.
+    :return: List of copied steps.
+    """
+    return [copy.copy(step) for step in steps]
+
+
+def copy_and_reset_steps(steps):
+    """Copy steps and reset each step (status, duration, etc.)
+
+    :param steps:       List of steps to copy.
+    :return: List of copied steps.
+    """
+    return reset_steps(copy_steps(steps))
+
+
+# ---------------------------------------------------------------------------
+# MODEL CLASSES:
+# ---------------------------------------------------------------------------
 class ScenarioContainer(TagAndStatusStatement, Replayable):
     """Abstract base class for model elements
     that contains the following structure:
@@ -55,11 +85,11 @@ class ScenarioContainer(TagAndStatusStatement, Replayable):
     .. attribute:: keyword
 
        This is the keyword as seen in the *feature file*. In English this will
-       be "Feature".
+       be "Feature" or "Rule".
 
     .. attribute:: name
 
-       The name of the feature (the text after "Feature".)
+       The name (or title) of the model entity (the text after the keyword.)
 
     .. attribute:: description
 
@@ -93,12 +123,16 @@ class ScenarioContainer(TagAndStatusStatement, Replayable):
 
        Status.untested
          The feature was has not been completely tested yet.
+
        Status.skipped
-         One or more steps of this feature was passed over during testing.
+         The execution of this model entity (feature or rule)
+         should be / was skipped (excluded from the test run).
+
        Status.passed
-         The feature was tested successfully.
+         The model entity (feature or rule) was tested successfully.
+
        Status.failed
-         One or more steps of this feature failed.
+         One or more run items of this model entity failed.
 
        .. versionchanged:: 1.2.6
             Use Status enum class (was: string).
@@ -147,6 +181,11 @@ class ScenarioContainer(TagAndStatusStatement, Replayable):
         for run_item in self.run_items:
             run_item.reset()
 
+    def _setup_context_for_run(self, context):
+        """Setup/Init runner context for run."""
+        # -- OVERRIDDEN: By derived classes.
+        pass
+
     def __iter__(self):
         return iter(self.run_items)
 
@@ -189,8 +228,8 @@ class ScenarioContainer(TagAndStatusStatement, Replayable):
 
         if skipped:
             return Status.skipped
-        else:
-            return Status.passed
+        # -- OTHERWISE:
+        return Status.passed
 
     @property
     def duration(self):
@@ -204,7 +243,7 @@ class ScenarioContainer(TagAndStatusStatement, Replayable):
         # feature_duration = self.run_endtime - self.run_starttime
         return feature_duration
 
-    def walk_scenarios(self, with_outlines=False):
+    def walk_scenarios(self, with_outlines=False, with_rules=False):
         """Provides a flat list of all scenarios of this ScenarioContainer.
         A ScenarioOutline element adds its scenarios to this list.
         But the ScenarioOutline element itself is only added when specified.
@@ -215,22 +254,33 @@ class ScenarioContainer(TagAndStatusStatement, Replayable):
         :param with_outlines: If ScenarioOutline items should be added, too.
         :return: List of all scenarios of this feature.
         """
-        # TODO: Better use self.run_items
         all_scenarios = []
-        # for scenario in self.scenarios:
         for run_item in self.run_items:
             if isinstance(run_item, Rule):
                 rule = run_item
-                all_scenarios.extend(rule.walk_scenarios(with_outlines=with_outlines))
-            if isinstance(run_item, ScenarioOutline):
+                if with_rules:
+                    all_scenarios.append(rule)
+                scenarios = rule.walk_scenarios(with_outlines=with_outlines)
+                all_scenarios.extend(scenarios)
+            elif isinstance(run_item, ScenarioOutline):
                 scenario_outline = run_item
                 if with_outlines:
                     all_scenarios.append(scenario_outline)
                 all_scenarios.extend(scenario_outline.scenarios)
             else:
-                assert isinstance(run_item, Scenario)
+                assert isinstance(run_item, Scenario), "OOPS: %r" % run_item
                 all_scenarios.append(run_item)
         return all_scenarios
+
+    def iter_scenarios(self):
+        return iter(self.walk_scenarios())
+
+    def iter_scenario_outlines(self):
+        return iter([x for x in self.walk_scenarios(with_outlines=True)
+                     if isinstance(x, ScenarioOutline)])
+
+    def iter_rules(self):
+        return iter([x for x in self.run_items if isinstance(x, Rule)])
 
     def should_run(self, config=None):
         """
@@ -274,9 +324,9 @@ class ScenarioContainer(TagAndStatusStatement, Replayable):
         assert self.status == Status.skipped or self.hook_failed
 
     def skip(self, reason=None, require_not_executed=False):
-        """Skip executing this feature or the remaining parts of it.
-        Note that this feature may be already partly executed
-        when this function is called.
+        """Skip executing this model entity or the remaining parts of it.
+        Note that this model entity (feature or rule) may be already partly
+        executed when this function is called.
 
         :param reason:  Optional reason why feature should be skipped (as string).
         :param require_not_executed: Optional, requires that feature is not
@@ -303,7 +353,7 @@ class ScenarioContainer(TagAndStatusStatement, Replayable):
         :param runner:  Runner to use.
         :return: True, if test-run failed.
         """
-        # pylint: disable=too-many-branches
+        # pylint: disable=too-many-branches, too-many-locals, too-many-statements
         # MAYBE: self.reset()
         self.clear_status()
         self.hook_failed = False
@@ -314,8 +364,8 @@ class ScenarioContainer(TagAndStatusStatement, Replayable):
         hook_after_entity = "after_{0}".format(entity_name)
 
         runner.context._push(layer_name=entity_name)      # pylint: disable=protected-access
-        runner.context.feature = self
         runner.context.tags = set(self.tags)
+        self._setup_context_for_run(runner.context)
 
         skip_entity_untested = runner.aborted
         should_run_entity = self.should_run(runner.config)
@@ -378,7 +428,7 @@ class ScenarioContainer(TagAndStatusStatement, Replayable):
         # -- PERFORM CONTEXT CLEANUP: May raise cleanup errors.
         try:
             runner.context._pop()       # pylint: disable=protected-access
-        except Exception:
+        except Exception:               # pylint: disable=broad-except
             # -- CLEANUP-ERROR:
             self.set_status(Status.failed)
 
@@ -497,16 +547,31 @@ class Feature(ScenarioContainer):
             (self.name, len(self.run_items),
              len(self.rules), len(self.scenarios))
 
+    def _setup_context_for_run(self, context):
+        context.feature = self
+
+    def add_background(self, background):
+        self.background = background
+        self.background.parent = self
+
     def add_rule(self, rule):
-        """Add a rule to this feature."""
+        """Add a rule to this feature (supported in: Gherkin v6).
+
+        .. versionadded: 1.2.7
+        """
         feature = self
         rule.parent = feature
         rule.feature = feature
-        if not rule.background:
-            # -- MAYBE: Inherit feature.background if the rule has no background.
-            rule.background = self.background
         self.rules.append(rule)
         self.run_items.append(rule)
+        if self.background:
+            # -- ENSURE: Rule inherits feature.background.
+            if not rule.background:
+                # -- ENSURE: Rule has a default background.
+                # Necessary to inherit feature.background (or disable it).
+                rule_default_background = Background(rule.filename, rule.line)
+                rule.add_background(rule_default_background)
+            rule.background.inherited_background = self.background
 
 
 class Rule(ScenarioContainer):
@@ -618,14 +683,51 @@ class Rule(ScenarioContainer):
                                    description, scenarios, background)
         self.parent = parent
         self.feature = parent
+        self._use_background_inheritance = True
+
+    def _setup_context_for_run(self, context):
+        context.rule = self
 
     def __repr__(self):
         return '<Rule "%s": %d scenario(s)>' % \
             (self.name, len(self.scenarios))
 
+    def add_background(self, background, inherited=None):
+        if inherited is None:
+            feature = self.feature or self.parent
+            inherited = feature.background
+
+        self.background = background
+        self.background.inherited_background = inherited
+        self.background.use_inheritance = self.use_background_inheritance
+        self.background.parent = self
+        # -- ENSURE: Normally background is added before scenarios.
+        for scenario in self.walk_scenarios():
+            scenario.background = self.background
+
+    @property
+    def use_background_inheritance(self):
+        return self._use_background_inheritance
+
+    @use_background_inheritance.setter
+    def use_background_inheritance(self, value):
+        self._use_background_inheritance = value
+        if self.background:
+            self.background.use_inheritance = value
+
 
 class Background(BasicStatement, Replayable):
     """A `background`_ parsed from a *feature file*.
+
+    Behaviour:
+
+    * Each scenario of a scenario container (Feature, Rule)
+      inherits the Background of its scenario container
+    * Background steps in a scenario are executed before scenario steps
+    * Rule Background inherits the Feature Background (outer background) if any
+    * Inherited Background steps are used/executed first
+    * Optionally, background inheritance can be disabled
+      (normally: by using a fixture/fixture-tag)
 
     The attributes are:
 
@@ -666,16 +768,62 @@ class Background(BasicStatement, Replayable):
     """
     type = "background"
 
-    def __init__(self, filename, line, keyword, name, steps=None, description=None):
+    def __init__(self, filename, line, keyword=u"Background", name=u"",
+                 steps=None, description=None):
         super(Background, self).__init__(filename, line, keyword, name)
         self.description = description or []
         self.steps = steps or []
+        self.inherited_background = None
+        self._inherited_steps = None
+        self._use_inheritance = True
 
-    def __repr__(self):
-        return '<Background "%s">' % self.name
+    @property
+    def use_inheritance(self):
+        """Indicates if this Background should inherit from an outer Background.
+        Background inheritance mechanism is enabled (per default).
+        Optionally, this mechanism can be disabled (or overridden).
 
-    def __iter__(self):
+        :return: Current background inheritance state (as bool).
+
+        .. versionadded:: 1.2.7
+        """
+        return self._use_inheritance
+
+    @use_inheritance.setter
+    def use_inheritance(self, value):
+        """Enable/disable background inheritance mechanism for this Background.
+
+        :param value:   New value (as bool).
+
+        .. versionadded:: 1.2.7
+        """
+        # -- ENSURE: inherited_steps are reinitialized (later).
+        self._use_inheritance = bool(value)
+        self._inherited_steps = None
+
+    @property
+    def inherited_steps(self):
+        # versionadded:: 1.2.7
+        if self._inherited_steps is None:
+            # -- LAZY-INIT: Support enable/disable the inheritance mechanism.
+            steps = []
+            if self.inherited_background and self._use_inheritance:
+                steps = copy_and_reset_steps(self.inherited_background.steps)
+            self._inherited_steps = steps
+        return self._inherited_steps
+
+    def iter_steps(self):
+        """Returns iterator to all steps, including inherited steps (if any).
+
+        .. versionadded:: 1.2.7
+        """
+        if self.inherited_steps:
+            return itertools.chain(self.inherited_steps, self.steps)
         return iter(self.steps)
+
+    @property
+    def all_steps(self):
+        return self.iter_steps()
 
     @property
     def duration(self):
@@ -683,6 +831,12 @@ class Background(BasicStatement, Replayable):
         for step in self.steps:
             duration += step.duration
         return duration
+
+    def __repr__(self):
+        return '<Background "%s">' % self.name
+
+    def __iter__(self):
+        return self.iter_steps()
 
 
 class Scenario(TagAndStatusStatement, Replayable):
@@ -780,6 +934,7 @@ class Scenario(TagAndStatusStatement, Replayable):
         self.feature = None  # REFER-TO: owner=Feature
         self.hook_failed = False
         self._background_steps = None
+        self._use_background = True
         self._row = None
         self.was_dry_run = False
 
@@ -795,8 +950,29 @@ class Scenario(TagAndStatusStatement, Replayable):
             step.reset()
 
     @property
+    def use_background(self):
+        """Indicates if the background is/would be used (if any exists).
+        NOTE: The Background (steps) are normally used.
+
+        .. versionadded:: 1.2.7
+        """
+        return self._use_background
+
+    @use_background.setter
+    def use_background(self, value):
+        """Enable/disable the usage of the background (steps).
+
+        :param value:  New value (as bool).
+
+        .. versionadded:: 1.2.7
+        """
+        # -- ENSURE: background_steps are reinitialized.
+        self._use_background = value
+        self._background_steps = None
+
+    @property
     def background_steps(self):
-        """Provide background steps if feature has a background.
+        """Provide background steps if feature/rule has a background.
         Lazy init that copies the background steps.
 
         Note that a copy of the background steps is needed to ensure
@@ -809,24 +985,29 @@ class Scenario(TagAndStatusStatement, Replayable):
             # Each scenario needs own background.steps.
             # Otherwise, background step status of the last-run scenario is used.
             steps = []
-            if self.background:
-                steps = [copy.copy(step) for step in self.background.steps]
+            if self.background and self.use_background:
+                steps = copy_and_reset_steps(self.background.all_steps)
             self._background_steps = steps
         return self._background_steps
 
-    @property
-    def all_steps(self):
-        """Returns iterator to all steps, including background steps if any."""
+    def iter_steps(self):
+        """Returns iterator to all steps, including background steps if any.
+
+        .. versionadded:: 1.2.7
+        """
         if self.background is not None:
             return itertools.chain(self.background_steps, self.steps)
-        else:
-            return iter(self.steps)
+        return iter(self.steps)
+
+    @property
+    def all_steps(self):
+        return self.iter_steps()
 
     def __repr__(self):
         return '<Scenario "%s">' % self.name
 
     def __iter__(self):
-        return self.all_steps
+        return self.iter_steps()
 
     def compute_status(self):
         """Compute the status of the scenario from its steps
@@ -843,9 +1024,8 @@ class Scenario(TagAndStatusStatement, Replayable):
                     # -- SPECIAL CASE: In dry-run with undefined-step discovery
                     #    Undefined steps should not cause failed scenario.
                     return Status.untested
-                else:
-                    # -- NORMALLY: Undefined steps cause failed scenario.
-                    return Status.failed
+                # -- NORMALLY: Undefined steps cause failed scenario.
+                return Status.failed
             elif step.status != Status.passed:
                 # pylint: disable=line-too-long
                 assert step.status in (Status.failed, Status.skipped, Status.untested)
@@ -1010,7 +1190,6 @@ class Scenario(TagAndStatusStatement, Replayable):
                     # BUT: Detect all remaining undefined steps.
                     step.status = Status.skipped
                     if dry_run_scenario:
-                        # pylint: disable=redefined-variable-type
                         step.status = Status.untested
                     found_step_match = runner.step_registry.find_match(step)
                     if not found_step_match:
@@ -1048,7 +1227,7 @@ class Scenario(TagAndStatusStatement, Replayable):
         # -- PERFORM CONTEXT-CLEANUP: May raise cleanup errors.
         try:
             runner.context._pop()       # pylint: disable=protected-access
-        except Exception:
+        except Exception:               # pylint: disable=broad-except
             self.set_status(Status.failed)
             failed = True
 
@@ -1157,9 +1336,9 @@ class ScenarioOutlineBuilder(object):
                 placeholder = u"<%s>" % name
                 for i, cell in enumerate(new_step.table.headings):
                     new_step.table.headings[i] = cell.replace(placeholder, value)
-                for row in new_step.table:
-                    for i, cell in enumerate(row.cells):
-                        row.cells[i] = cell.replace(placeholder, value)
+                for step_row in new_step.table:
+                    for i, cell in enumerate(step_row.cells):
+                        step_row.cells[i] = cell.replace(placeholder, value)
         return new_step
 
     def build_scenarios(self, scenario_outline):
@@ -1621,7 +1800,6 @@ class Step(BasicStatement, Replayable):
                 match.run(runner.context)
                 if self.status == Status.untested:
                     # -- NOTE: Executed step may have skipped scenario and itself.
-                    # pylint: disable=redefined-variable-type
                     self.status = Status.passed
             except KeyboardInterrupt as e:
                 runner.aborted = True
@@ -1796,8 +1974,7 @@ class Table(Replayable):
         """
         if self.has_column(column_name):
             return self.get_column_index(column_name)
-        else:
-            return self.add_column(column_name)
+        return self.add_column(column_name)
 
     def __repr__(self):
         return "<Table: %dx%d>" % (len(self.headings), len(self.rows))

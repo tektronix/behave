@@ -62,10 +62,6 @@ class LogLevel(object):
         return logging.getLevelName(level)
 
 
-class ConfigError(Exception):
-    pass
-
-
 # -----------------------------------------------------------------------------
 # CONFIGURATION SCHEMA:
 # -----------------------------------------------------------------------------
@@ -601,7 +597,10 @@ class Configuration(object):
         if self.steps_catalog:
             # -- SHOW STEP-CATALOG: As step summary.
             self.default_format = "steps.catalog"
-            self.format = ["steps.catalog"]
+            if self.format:
+                self.format.append("steps.catalog")
+            else:
+                self.format = ["steps.catalog"]
             self.dry_run = True
             self.summary = False
             self.show_skipped = False
