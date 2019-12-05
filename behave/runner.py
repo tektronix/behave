@@ -633,34 +633,253 @@ class Runner(ModelRunner):
         if 'before_all' not in self.hooks:
             self.hooks['before_all'] = self.before_all_default_hook
 
+    # OLD FUNCTION
+    # def load_step_definitions(self, extra_step_paths=[]):
+    #     step_globals = {
+    #         'use_step_matcher': matchers.use_step_matcher,
+    #         'step_matcher':     matchers.step_matcher, # -- DEPRECATING
+    #     }
+    #     setup_step_decorators(step_globals)
+    #
+    #     # -- Allow steps to import other stuff from the steps dir
+    #     # NOTE: Default matcher can be overridden in "environment.py" hook.
+    #
+    #     # ORIGINAL BEHAVE. Gives base directory C:\Users\...\test_framework\features
+    #     # steps_dir = os.path.join(self.base_dir, self.config.steps_dir)
+    #
+    #     # Gives the directory C:\Users\...\test_framework\ by slicing off default "\features from end of self.base_dir
+    #     modified_base = self.base_dir[:-8]
+    #
+    #     steps_dirs = []
+    #
+    #     # TO ADD ANOTHER STEPS DIRECTORY, COPY AND PASTE ONE OF BELOW CODE LINES AND MODIFY THE PASSED IN STRING TO THE
+    #     # REFLECT THE PATH TO YOUR STEPS DIRECTORY STARTING FROM THE BASE DIRECTORY "C:\Users\...\test_framework\"
+    #     # Adds path to PI steps to steps_dirs
+    #     steps_dirs.append(os.path.join(modified_base, "pi\steps"))
+    #     # Adds path to UI steps to steps_dirs
+    #     steps_dirs.append(os.path.join(modified_base, "ui\steps"))
+    #
+    #     # ORIGINAL BEHAVE
+    #     # paths = [steps_dir] + list(extra_step_paths)
+    #
+    #     # FENG'S MODIFICATION TO SUPPORT SUB-DIRECTORIES WITHIN A "STEPS" DIRECTORY
+    #     # paths = [steps_dir] + [x[0] for x in os.walk(steps_dir)]
+    #
+    #     # JON DAVID'S ORIGINAL MODIFICATION TO SUPPORT MULTIPLE STEP DIRECTORIES
+    #     # paths = [x[0] for x in os.walk(pi_steps_dir)] + [x[0] for x in os.walk(ui_steps_dir)]
+    #
+    #     # This code works by iterating through "steps_dirs" which contains the paths to our PI and UI "steps"
+    #     # directories. Then the currently selected path uses os.walk, which looks at the directory it's passed and by
+    #     # default goes top-down and generates a directory tree of paths for each path location. Finally Feng's for loop
+    #     # logic makes a list of these directory trees paths and those list items are inserted into "paths
+    #     paths = []
+    #     for selected_path in steps_dirs:
+    #         paths += [x[0] for x in os.walk(selected_path)]
+    #
+    #     # Objective is that when you are at this point, "paths" should be a list of paths that go to step directories
+    #     with PathManager(paths):
+    #         default_matcher = matchers.current_matcher
+    #         # Looks at each path in the list "paths" which contains our UI and PI step directory paths
+    #         for path in paths:
+    #             # os.listdir gives name of all files in the current path being looked at from "paths" list
+    #             # Sees if any of files in specified path are .py files and grabs them as our step files
+    #             for name in sorted(os.listdir(path)):
+    #                 if name.endswith('.py'):
+    #                     # -- LOAD STEP DEFINITION:
+    #                     # Reset to default matcher after each step-definition.
+    #                     # A step-definition may change the matcher 0..N times.
+    #                     # ENSURE: Each step definition has clean globals.
+    #                     # try:
+    #                     step_module_globals = step_globals.copy()
+    #                     exec_file(os.path.join(path, name), step_module_globals)
+    #                     matchers.current_matcher = default_matcher
+    #                     # except Exception as e:
+    #                     #     e_text = _text(e)
+    #                     #     print("Exception %s: %s" % (e.__class__.__name__, e_text))
+    #                     #     raise
+
     def load_step_definitions(self, extra_step_paths=[]):
+        """Behave's default function to load step definitions, modified to dynamically retrieve step files based
+        on the test framework's inheritance structure.
+
+        Args:
+            extra_step_paths ():
+                This is more or less undocumented by Behave anyway, but it's completely unused with the test framework
+                and left only to avoid making unnecessary changes to the internal API.
+
+        Raises:
+            NotImplementedError: Raised when multiple scopes, AFGs, or AWGs are provided but their types, series, and
+            revision don't match (thus causing potentially conflicting step libs to be loaded, which is a problem). Also
+            raised if an unsupported device somehow makes it to this point.
+        """
+        from utils import config_parser
+
         step_globals = {
             'use_step_matcher': matchers.use_step_matcher,
             'step_matcher':     matchers.step_matcher, # -- DEPRECATING
         }
         setup_step_decorators(step_globals)
 
-        # -- Allow steps to import other stuff from the steps dir
-        # NOTE: Default matcher can be overridden in "environment.py" hook.
-        steps_dir = os.path.join(self.base_dir, self.config.steps_dir)
-        paths = [steps_dir] + list(extra_step_paths)
-        with PathManager(paths):
-            default_matcher = matchers.current_matcher
-            for path in paths:
-                for name in sorted(os.listdir(path)):
-                    if name.endswith('.py'):
-                        # -- LOAD STEP DEFINITION:
-                        # Reset to default matcher after each step-definition.
-                        # A step-definition may change the matcher 0..N times.
-                        # ENSURE: Each step definition has clean globals.
-                        # try:
-                        step_module_globals = step_globals.copy()
-                        exec_file(os.path.join(path, name), step_module_globals)
-                        matchers.current_matcher = default_matcher
-                        # except Exception as e:
-                        #     e_text = _text(e)
-                        #     print("Exception %s: %s" % (e.__class__.__name__, e_text))
-                        #     raise
+        # Set up empty to detect if we've already determined which step "lib" to load.
+        # This is done due to a limitation in how Behave tracks steps.
+        scope_step_pi_import = scope_step_ui_import = afg_step_import = awg_step_import = ""
+        scope_step_files = afg_step_files = awg_step_files = []
+
+        root_dir = os.getcwd()
+
+        devices, _ = config_parser.get_device_config()
+
+        for dev_name, (_, series, dev_type, revision, form_factor, _) in devices.items():
+            # print("{} {} {}\n".format(series, dev_type, revision, form_factor))
+            # dev_type = dev_name.partition(" ")[0].lower()
+
+            if dev_name.startswith("scope"):
+                temp_scope_pi_step_import = "devices/scopes/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type, revision)
+                temp_scope_ui_step_import = "devices/scopes/{0}/{1}{2}/ui/all_steps.py".format(series, dev_type, revision)
+
+                if not scope_step_pi_import and not scope_step_ui_import:
+                    # If we haven't defined what scope steps we're importing yet, set and retrieve them now.
+                    # Load the step lib for the provided device if it's available, otherwise load the default step lib
+                    # for an MSO 5-Series scope and print a warning.
+                    if os.path.isfile(os.path.join(root_dir, temp_scope_pi_step_import)):
+                        scope_step_pi_import = temp_scope_pi_step_import
+                    else:
+                        scope_step_pi_import = "devices/scopes/series_5/mso/pi/all_steps.py"
+                        print("\nWARNING: No PI step library exists for the provided scope, which appears to be an "
+                              "\"{0} {1}\". As such the MSO 5-Series PI step library has been loaded by default. Some "
+                              "features or commands may not work as expected.\n".format(dev_type.upper(), series[7:]))
+
+                    scope_step_pi_files = self._ptf_get_step_files(os.path.join(root_dir, scope_step_pi_import))
+
+                    if os.path.isfile(os.path.join(root_dir, temp_scope_ui_step_import)):
+                        scope_step_ui_import = temp_scope_ui_step_import
+                    else:
+                        scope_step_ui_import = "devices/scopes/series_5/mso/ui/all_steps.py"
+                        print("\nWARNING: No UI step library exists for the provided scope, which appears to be an "
+                              "\"{0} {1}\". As such the MSO 5-Series UI step library has been loaded by default. Some "
+                              "features or commands may not work as expected.\n".format(dev_type.upper(), series[7:]))
+
+                    scope_step_ui_files = self._ptf_get_step_files(os.path.join(root_dir, scope_step_ui_import))
+
+                    scope_step_files = scope_step_pi_files + [x for x in scope_step_ui_files if x not in scope_step_pi_files]
+
+                    # print(scope_step_import)
+                    # print("\nSCOPE STEP FILES")
+                    # for ssfile in scope_step_files:
+                    #     print(ssfile)
+
+                elif temp_scope_pi_step_import != scope_step_pi_import:
+                    # Throw an error if multiple scopes are provided but aren't the same type and series.
+                    raise NotImplementedError("Multiple scopes are only allowed if all devices are of the same series, "
+                                              "type, and revision.")
+
+            elif dev_name.startswith("AFG"):
+                temp_afg_step_import = "devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type, revision)
+                if not afg_step_import:
+                    # If we haven't defined what AFG steps we're importing yet, set and retrieve them now.
+                    afg_step_import = temp_afg_step_import
+                    # print(afg_step_import)
+
+                    # afg_step_import = "devices/sources/series_3000/afgc/pi/all_steps.py"
+                    afg_step_files = self._ptf_get_step_files(os.path.join(root_dir, afg_step_import))
+                    # print("\nAFG STEP FILES")
+                    # for asfile in afg_step_files:
+                    #     print(asfile)
+
+                elif temp_afg_step_import != afg_step_import:
+                    # Throw an error if multiple AFGs are provided but aren't the same series.
+                    raise NotImplementedError("Multiple AFGs are only allowed if all devices are of the same series "
+                                              "and revision.")
+
+            elif dev_name.startswith("AWG"):
+                temp_awg_step_import = "devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type, revision)
+                if not awg_step_import:
+                    # If we haven't defined what AWG steps we're importing yet, set and retrieve them now.
+                    awg_step_import = temp_awg_step_import
+                    # print(awg_step_import)
+
+                    awg_step_files = self._ptf_get_step_files(os.path.join(root_dir, awg_step_import))
+                    # print("\nAWG STEP FILES")
+                    # for asfile in awg_step_files:
+                    #     print(asfile)
+
+                elif temp_awg_step_import != awg_step_import:
+                    # Throw an error if multiple AWGs are provided but aren't the same series.
+                    raise NotImplementedError("Multiple AWGs are only allowed if all devices are of the same series "
+                                              "and revision.")
+
+            else:
+                raise NotImplementedError("Congrats, you magically got an unsupported device ({0}) through the config "
+                                          "parser, now go tell Joshua Sleeper or Jonathan David Ice.".format(dev_name))
+
+        default_matcher = matchers.current_matcher
+        # Add each step file to Behave's step list
+        for step_file in (scope_step_files + afg_step_files + awg_step_files):
+            step_module_globals = step_globals.copy()
+            exec_file(step_file, step_module_globals)
+            matchers.current_matcher = default_matcher
+
+
+    def _ptf_get_step_files(self, step_import_file):
+        """A utility function to get a list of relevant step files for the provided step import file.
+
+        The provided all_steps.py file defines the inheritance ordering for the associated device, so we parse the
+        imports to determine which files contain steps we care about and build a list of those files.
+
+        Arguments:
+            step_import_file (str):
+                An absolute path to the ``all_steps.py`` to be used, which in turn defines the inheritance structure
+                for that device.
+
+        Returns:
+            List[str]: A list of absolute paths to all relevant step files, ordered from most important (top of the
+            inheritance chain) to least important (bottom of the chain).
+
+        Raises:
+            NotImplementedError: Raised when the ``step_import_file`` passed in isn't named ``all_steps.py``.
+        """
+
+        # List for storing absolute paths of all step files to be parsed.
+        step_files = []
+        # Absolute path to the root directory of the test framework.
+        root_dir = step_import_file.partition("devices")[0]
+        # print("Step Import File: " + step_import_file)
+
+        if step_import_file.endswith("all_steps.py"):
+            with open(step_import_file) as imp_file:
+                for line in imp_file:
+                    if line.startswith(("#", "\r", "\n")) or "generic_imports" in line:
+                        continue
+
+                    # Working with ``from <import_path> import *`` ,we remove the ``from `` prefix and `` import *``
+                    # suffix, then replace periods with forward slashes to get a relative path to the step file.
+                    rel_step_file_path = "{0}.py".format(line[5:].partition(" ")[0].replace('.', '/'))
+
+                    if "all_steps" in line:
+                        # Call this function recursively for each ``all_steps`` file found, prepending step files
+                        # from the bottom to the top of the inheritance chain.
+                        # print("rel_all_step_path = " + rel_step_file_path)
+                        step_files[0:0] = self._ptf_get_step_files(os.path.join(root_dir, rel_step_file_path))
+
+                    elif "device_steps" in line or "common_steps" in line:
+                        # Get all step files from the steps directory for that device and prepend them to the list.
+                        # print("rel_dev_step_path = " + rel_step_file_path)
+                        dev_steps_dir = os.path.dirname(os.path.join(root_dir, rel_step_file_path))
+                        step_files[0:0] = [os.path.join(dev_steps_dir, step_file) for step_file in
+                                           next(os.walk(dev_steps_dir))[2] if
+                                           step_file.lower().endswith(".py") and step_file.lower() not in (
+                                           "__init__.py", "device_steps.py", "common_steps.py")]
+
+                    elif "generic_steps" in line:
+                        # This means we've gotten to the bottom of the inheritance chain, so just prepend the file.
+                        # print("rel_gen_step_path = " + rel_step_file_path)
+                        step_files.insert(0, os.path.join(root_dir, rel_step_file_path))
+
+        else:
+            raise NotImplementedError("Step import file received is not a top-level step import file.\n"
+                                      "File received: {0}".format(step_import_file))
+
+        return step_files
 
     def feature_locations(self):
         return collect_feature_locations(self.config.paths)
@@ -691,7 +910,3 @@ class Runner(ModelRunner):
         stream_openers = self.config.outputs
         self.formatters = make_formatters(self.config, stream_openers)
         return self.run_model()
-
-
-
-
