@@ -185,7 +185,7 @@ class Context(object):
         pass
 
     @staticmethod
-    def print_cleanup_error(context, cleanup_func, exception):
+    def print_cleanup_error(cleanup_func, exception):
         cleanup_func_name = getattr(cleanup_func, "__name__", None)
         if not cleanup_func_name:
             cleanup_func_name = "%r" % cleanup_func
@@ -224,7 +224,7 @@ class Context(object):
         for cleanup_func in reversed(cleanup_funcs):
             try:
                 cleanup_func()
-            except Exception as e: # pylint: disable=broad-except
+            except Exception as e:  # pylint: disable=broad-except
                 # pylint: disable=protected-access
                 context._root["cleanup_errors"] += 1
                 cleanup_errors.append(sys.exc_info())
@@ -234,7 +234,6 @@ class Context(object):
             first_cleanup_erro_info = cleanup_errors[0]
             del cleanup_errors  # -- ENSURE: Release other exception frames.
             six.reraise(*first_cleanup_erro_info)
-
 
     def _push(self, layer_name=None):
         """Push a new layer on the context stack.
@@ -586,7 +585,7 @@ class ModelRunner(object):
                     if statement.error_message:
                         # -- NOTE: One exception/failure is already stored.
                         #    Append only error message.
-                        statement.error_message += "\n"+ error_message
+                        statement.error_message += "\n" + error_message
                     else:
                         # -- FIRST EXCEPTION/FAILURE:
                         statement.store_exception_context(e)
@@ -663,10 +662,10 @@ class ModelRunner(object):
         for reporter in self.config.reporters:
             reporter.end()
 
+        # XXX-MAYBE: or context.failed)
         failed = ((failed_count > 0) or self.aborted or (self.hook_failures > 0)
                   or (len(self.undefined_steps) > undefined_steps_initial_size)
                   or cleanups_failed)
-                  # XXX-MAYBE: or context.failed)
         return failed
 
     def run(self):
@@ -744,7 +743,7 @@ class Runner(ModelRunner):
                     print('ERROR: Could not find "{0}" directory. Please specify where to find your features.'
                           .format(steps_dir))
                 else:
-                    print('ERROR: Could not find "%s" directory in your '\
+                    print('ERROR: Could not find "%s" directory in your '
                           'specified path "%s"' % (steps_dir, base_dir))
 
             message = 'No %s directory in %r' % (steps_dir, base_dir)
@@ -774,7 +773,8 @@ class Runner(ModelRunner):
         if base_dir != os.getcwd():
             self.path_manager.add(os.getcwd())
 
-    def before_all_default_hook(self, context):
+    @staticmethod
+    def before_all_default_hook(context):
         """
         Default implementation for :func:`before_all()` hook.
         Setup the logging subsystem based on the configuration data.
@@ -810,7 +810,7 @@ class Runner(ModelRunner):
     #
     #     steps_dirs = []
     #
-    #     # TO ADD ANOTHER STEPS DIRECTORY, COPY AND PASTE ONE OF BELOW CODE LINES AND MODIFY THE PASSED IN STRING TO THE
+    #     # TO ADD ANOTHER STEPS DIRECTORY, COPY AND PASTE ONE OF BELOW CODE LINES AND MODIFY THE PASSED IN STRING TO
     #     # REFLECT THE PATH TO YOUR STEPS DIRECTORY STARTING FROM THE BASE DIRECTORY "C:\Users\...\test_framework\"
     #     # Adds path to PI steps to steps_dirs
     #     steps_dirs.append(os.path.join(modified_base, "pi\steps"))
@@ -828,8 +828,9 @@ class Runner(ModelRunner):
     #
     #     # This code works by iterating through "steps_dirs" which contains the paths to our PI and UI "steps"
     #     # directories. Then the currently selected path uses os.walk, which looks at the directory it's passed and by
-    #     # default goes top-down and generates a directory tree of paths for each path location. Finally Feng's for loop
-    #     # logic makes a list of these directory trees paths and those list items are inserted into "paths
+    #     # default goes top-down and generates a directory tree of paths for each path location.
+    #     # Finally Feng's for loop logic makes a list of these directory trees paths and those list items
+    #     # are inserted into "paths
     #     paths = []
     #     for selected_path in steps_dirs:
     #         paths += [x[0] for x in os.walk(selected_path)]
@@ -910,7 +911,7 @@ class Runner(ModelRunner):
                 series = dev_info[1][1]
                 dev_type = dev_info[1][2]
                 revision = dev_info[1][3]
-                form_factor = dev_info[1][4]
+                # form_factor = dev_info[1][4]
             else:
                 series = ''
                 dev_type = ''
@@ -950,7 +951,8 @@ class Runner(ModelRunner):
 
                     scope_step_ui_files = self._ptf_get_step_files(os.path.join(root_dir, scope_step_ui_import))
 
-                    scope_step_files = scope_step_pi_files + [x for x in scope_step_ui_files if x not in scope_step_pi_files]
+                    scope_step_files = scope_step_pi_files + [x for x in scope_step_ui_files
+                                                              if x not in scope_step_pi_files]
 
                     # print(scope_step_import)
                     # print("\nSCOPE STEP FILES")
@@ -963,13 +965,13 @@ class Runner(ModelRunner):
                                               "type, and revision.")
 
             elif dev_name.startswith("AFG"):
-                temp_afg_step_import = "python_test_framework/bdd/devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type, revision)
+                temp_afg_step_import = \
+                    "python_test_framework/bdd/devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type,
+                                                                                                  revision)
                 if not afg_step_import:
                     # If we haven't defined what AFG steps we're importing yet, set and retrieve them now.
                     afg_step_import = temp_afg_step_import
-                    # print(afg_step_import)
 
-                    # afg_step_import = "devices/sources/series_3000/afgc/pi/all_steps.py"
                     afg_step_files = self._ptf_get_step_files(os.path.join(root_dir, afg_step_import))
                     # print("\nAFG STEP FILES")
                     # for asfile in afg_step_files:
@@ -981,11 +983,12 @@ class Runner(ModelRunner):
                                               "and revision.")
 
             elif dev_name.startswith("AWG"):
-                temp_awg_step_import = "python_test_framework/bdd/devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type, revision)
+                temp_awg_step_import = \
+                    "python_test_framework/bdd/devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type,
+                                                                                                  revision)
                 if not awg_step_import:
                     # If we haven't defined what AWG steps we're importing yet, set and retrieve them now.
                     awg_step_import = temp_awg_step_import
-                    # print(awg_step_import)
 
                     awg_step_files = self._ptf_get_step_files(os.path.join(root_dir, awg_step_import))
                     # print("\nAWG STEP FILES")
@@ -1007,7 +1010,6 @@ class Runner(ModelRunner):
             step_module_globals = step_globals.copy()
             exec_file(step_file, step_module_globals)
             matchers.current_matcher = default_matcher
-
 
     def _ptf_get_step_files(self, step_import_file):
         """A utility function to get a list of relevant step files for the provided step import file.
