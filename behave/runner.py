@@ -692,6 +692,7 @@ class Runner(ModelRunner):
 
     def setup_paths(self):
         # pylint: disable=too-many-branches, too-many-statements
+        import python_test_framework.bdd.features as temp_environment
         if self.config.paths:
             if self.config.verbose:
                 print("Supplied path:", ", ".join('"%s"' % path for path in self.config.paths))
@@ -721,6 +722,7 @@ class Runner(ModelRunner):
         # Get the root. This is not guaranteed to be "/" because Windows.
         root_dir = path_getrootdir(base_dir)
         new_base_dir = base_dir
+        environment_file_dir = os.path.dirname(temp_environment.__file__)
         steps_dir = self.config.steps_dir
         environment_file = self.config.environment_file
 
@@ -733,6 +735,12 @@ class Runner(ModelRunner):
             if os.path.isfile(os.path.join(new_base_dir, environment_file)):
                 break
             if new_base_dir == root_dir:
+                break
+
+            if self.config.verbose:
+                print("Trying environment file directory:", environment_file_dir)
+            if os.path.isfile(os.path.join(environment_file_dir, environment_file)):
+                new_base_dir = environment_file_dir
                 break
 
             new_base_dir = os.path.dirname(new_base_dir)
@@ -874,6 +882,7 @@ class Runner(ModelRunner):
         from behave import matchers
         from behave.step_registry import setup_step_decorators
         from python_test_framework.utils import config_parser
+        import python_test_framework
 
         step_globals = {
             'use_step_matcher': matchers.use_step_matcher,
@@ -886,7 +895,7 @@ class Runner(ModelRunner):
         scope_step_pi_import = scope_step_ui_import = afg_step_import = awg_step_import = ""
         scope_step_files = afg_step_files = awg_step_files = []
 
-        root_dir = os.getcwd()
+        root_dir = os.path.dirname(python_test_framework.__file__)
 
         if self.config.dry_run:
             # [dev_name, (_, series, dev_type, revision, form_factor, _)]
@@ -898,8 +907,13 @@ class Runner(ModelRunner):
                                ('AWG', (None, self.config.userdata['dry_run_awg_series'],
                                         self.config.userdata['dry_run_awg_type'], '', None, None))]
             except KeyError:
-                raise AssertionError("No dry run devices were specified in the behave.ini file, "
-                                     "find your local SQE and talk with them about how to fix it.")
+                devices, _ = config_parser.get_device_config()
+                device_list = devices.items()
+                if not list(device_list)[0][0].startswith('scope'):
+                    raise AssertionError("No dry run devices were specified in the behave.ini file, "
+                                         "make sure that behave is running from the root of the main repository.  "
+                                         "If you are still encountering issues, find your local SQE and talk with "
+                                         "them about how to fix it.")
         else:
             devices, _ = config_parser.get_device_config()
             device_list = devices.items()
@@ -920,12 +934,10 @@ class Runner(ModelRunner):
             # dev_type = dev_name.partition(" ")[0].lower()
 
             if dev_name.startswith("scope"):
-                temp_scope_pi_step_import = \
-                    "python_test_framework/bdd/devices/scopes/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type,
-                                                                                                 revision)
-                temp_scope_ui_step_import = \
-                    "python_test_framework/bdd/devices/scopes/{0}/{1}{2}/ui/all_steps.py".format(series, dev_type,
-                                                                                                 revision)
+                temp_scope_pi_step_import = "bdd/devices/scopes/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type,
+                                                                                                   revision)
+                temp_scope_ui_step_import = "bdd/devices/scopes/{0}/{1}{2}/ui/all_steps.py".format(series, dev_type,
+                                                                                                   revision)
 
                 if not scope_step_pi_import and not scope_step_ui_import:
                     # If we haven't defined what scope steps we're importing yet, set and retrieve them now.
@@ -934,7 +946,7 @@ class Runner(ModelRunner):
                     if os.path.isfile(os.path.join(root_dir, temp_scope_pi_step_import)):
                         scope_step_pi_import = temp_scope_pi_step_import
                     else:
-                        scope_step_pi_import = "python_test_framework/bdd/devices/scopes/series_5/mso/pi/all_steps.py"
+                        scope_step_pi_import = "bdd/devices/scopes/series_5/mso/pi/all_steps.py"
                         print("\nWARNING: No PI step library exists for the provided scope, which appears to be an "
                               "\"{0} {1}\". As such the MSO 5-Series PI step library has been loaded by default. Some "
                               "features or commands may not work as expected.\n".format(dev_type.upper(), series[7:]))
@@ -944,7 +956,7 @@ class Runner(ModelRunner):
                     if os.path.isfile(os.path.join(root_dir, temp_scope_ui_step_import)):
                         scope_step_ui_import = temp_scope_ui_step_import
                     else:
-                        scope_step_ui_import = "python_test_framework/bdd/devices/scopes/series_5/mso/ui/all_steps.py"
+                        scope_step_ui_import = "bdd/devices/scopes/series_5/mso/ui/all_steps.py"
                         print("\nWARNING: No UI step library exists for the provided scope, which appears to be an "
                               "\"{0} {1}\". As such the MSO 5-Series UI step library has been loaded by default. Some "
                               "features or commands may not work as expected.\n".format(dev_type.upper(), series[7:]))
@@ -965,9 +977,8 @@ class Runner(ModelRunner):
                                               "type, and revision.")
 
             elif dev_name.startswith("AFG"):
-                temp_afg_step_import = \
-                    "python_test_framework/bdd/devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type,
-                                                                                                  revision)
+                temp_afg_step_import = "bdd/devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type,
+                                                                                               revision)
                 if not afg_step_import:
                     # If we haven't defined what AFG steps we're importing yet, set and retrieve them now.
                     afg_step_import = temp_afg_step_import
@@ -983,9 +994,8 @@ class Runner(ModelRunner):
                                               "and revision.")
 
             elif dev_name.startswith("AWG"):
-                temp_awg_step_import = \
-                    "python_test_framework/bdd/devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type,
-                                                                                                  revision)
+                temp_awg_step_import = "bdd/devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type,
+                                                                                               revision)
                 if not awg_step_import:
                     # If we haven't defined what AWG steps we're importing yet, set and retrieve them now.
                     awg_step_import = temp_awg_step_import
