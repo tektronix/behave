@@ -3,7 +3,6 @@
 This module provides Runner class to run behave feature files (or model elements).
 """
 
-from __future__ import absolute_import, print_function, with_statement
 
 import contextlib
 import os.path
@@ -186,11 +185,11 @@ class Context(object):
         pass
 
     @staticmethod
-    def print_cleanup_error(context, cleanup_func, exception):
+    def print_cleanup_error(cleanup_func, exception):
         cleanup_func_name = getattr(cleanup_func, "__name__", None)
         if not cleanup_func_name:
             cleanup_func_name = "%r" % cleanup_func
-        print(u"CLEANUP-ERROR in %s: %s: %s" %
+        print("CLEANUP-ERROR in %s: %s: %s" %
               (cleanup_func_name, exception.__class__.__name__, exception))
         traceback.print_exc(file=sys.stdout)
         # MAYBE: context._dump(pretty=True, prefix="Context: ")
@@ -225,7 +224,7 @@ class Context(object):
         for cleanup_func in reversed(cleanup_funcs):
             try:
                 cleanup_func()
-            except Exception as e: # pylint: disable=broad-except
+            except Exception as e:  # pylint: disable=broad-except
                 # pylint: disable=protected-access
                 context._root["cleanup_errors"] += 1
                 cleanup_errors.append(sys.exc_info())
@@ -235,7 +234,6 @@ class Context(object):
             first_cleanup_erro_info = cleanup_errors[0]
             del cleanup_errors  # -- ENSURE: Release other exception frames.
             six.reraise(*first_cleanup_erro_info)
-
 
     def _push(self, layer_name=None):
         """Push a new layer on the context stack.
@@ -402,13 +400,13 @@ class Context(object):
                 passed = step.run(self._runner, quiet=True, capture=False)
                 if not passed:
                     # -- ISSUE #96: Provide more substep info to diagnose problem.
-                    step_line = u"%s %s" % (step.keyword, step.name)
+                    step_line = "%s %s" % (step.keyword, step.name)
                     message = "%s SUB-STEP: %s" % \
                               (step.status.name.upper(), step_line)
                     if step.error_message:
                         message += "\nSubstep info: %s\n" % step.error_message
-                        message += u"Traceback (of failed substep):\n"
-                        message += u"".join(traceback.format_tb(step.exc_traceback))
+                        message += "Traceback (of failed substep):\n"
+                        message += "".join(traceback.format_tb(step.exc_traceback))
                     # message += u"\nTraceback (of context.execute_steps()):"
                     assert False, message
 
@@ -562,12 +560,12 @@ class ModelRunner(object):
                 if self.config.verbose:
                     use_traceback = True
                     ExceptionUtil.set_traceback(e)
-                extra = u""
+                extra = ""
                 if "tag" in name:
                     extra = "(tag=%s)" % args[0]
 
                 error_text = ExceptionUtil.describe(e, use_traceback).rstrip()
-                error_message = u"HOOK-ERROR in %s%s: %s" % (name, extra, error_text)
+                error_message = "HOOK-ERROR in %s%s: %s" % (name, extra, error_text)
                 print(error_message)
                 self.hook_failures += 1
                 if "tag" in name:
@@ -587,7 +585,7 @@ class ModelRunner(object):
                     if statement.error_message:
                         # -- NOTE: One exception/failure is already stored.
                         #    Append only error message.
-                        statement.error_message += u"\n"+ error_message
+                        statement.error_message += "\n" + error_message
                     else:
                         # -- FIRST EXCEPTION/FAILURE:
                         statement.store_exception_context(e)
@@ -664,10 +662,10 @@ class ModelRunner(object):
         for reporter in self.config.reporters:
             reporter.end()
 
+        # XXX-MAYBE: or context.failed)
         failed = ((failed_count > 0) or self.aborted or (self.hook_failures > 0)
                   or (len(self.undefined_steps) > undefined_steps_initial_size)
                   or cleanups_failed)
-                  # XXX-MAYBE: or context.failed)
         return failed
 
     def run(self):
@@ -692,13 +690,12 @@ class Runner(ModelRunner):
         self.path_manager = PathManager()
         self.base_dir = None
 
-
     def setup_paths(self):
         # pylint: disable=too-many-branches, too-many-statements
+        import python_test_framework.bdd.features as temp_environment
         if self.config.paths:
             if self.config.verbose:
-                print("Supplied path:", \
-                      ", ".join('"%s"' % path for path in self.config.paths))
+                print("Supplied path:", ", ".join('"%s"' % path for path in self.config.paths))
             first_path = self.config.paths[0]
             if hasattr(first_path, "filename"):
                 # -- BETTER: isinstance(first_path, FileLocation):
@@ -725,6 +722,7 @@ class Runner(ModelRunner):
         # Get the root. This is not guaranteed to be "/" because Windows.
         root_dir = path_getrootdir(base_dir)
         new_base_dir = base_dir
+        environment_file_dir = os.path.dirname(temp_environment.__file__)
         steps_dir = self.config.steps_dir
         environment_file = self.config.environment_file
 
@@ -739,17 +737,22 @@ class Runner(ModelRunner):
             if new_base_dir == root_dir:
                 break
 
+            if self.config.verbose:
+                print("Trying environment file directory:", environment_file_dir)
+            if os.path.isfile(os.path.join(environment_file_dir, environment_file)):
+                new_base_dir = environment_file_dir
+                break
+
             new_base_dir = os.path.dirname(new_base_dir)
 
         if new_base_dir == root_dir:
             if self.config.verbose:
                 if not self.config.paths:
-                    print('ERROR: Could not find "%s" directory. '\
-                          'Please specify where to find your features.' % \
-                                steps_dir)
+                    print('ERROR: Could not find "{0}" directory. Please specify where to find your features.'
+                          .format(steps_dir))
                 else:
-                    print('ERROR: Could not find "%s" directory in your '\
-                        'specified path "%s"' % (steps_dir, base_dir))
+                    print('ERROR: Could not find "%s" directory in your '
+                          'specified path "%s"' % (steps_dir, base_dir))
 
             message = 'No %s directory in %r' % (steps_dir, base_dir)
             raise ConfigError(message)
@@ -763,11 +766,11 @@ class Runner(ModelRunner):
         else:
             if self.config.verbose:
                 if not self.config.paths:
-                    print('ERROR: Could not find any "<name>.feature" files. '\
-                        'Please specify where to find your features.')
+                    print('ERROR: Could not find any "<name>.feature" files. '
+                          'Please specify where to find your features.')
                 else:
-                    print('ERROR: Could not find any "<name>.feature" files '\
-                        'in your specified path "%s"' % base_dir)
+                    print('ERROR: Could not find any "<name>.feature" files '
+                          'in your specified path "%s"' % base_dir)
             raise ConfigError('No feature files in %r' % base_dir)
 
         self.base_dir = base_dir
@@ -778,7 +781,8 @@ class Runner(ModelRunner):
         if base_dir != os.getcwd():
             self.path_manager.add(os.getcwd())
 
-    def before_all_default_hook(self, context):
+    @staticmethod
+    def before_all_default_hook(context):
         """
         Default implementation for :func:`before_all()` hook.
         Setup the logging subsystem based on the configuration data.
@@ -814,7 +818,7 @@ class Runner(ModelRunner):
     #
     #     steps_dirs = []
     #
-    #     # TO ADD ANOTHER STEPS DIRECTORY, COPY AND PASTE ONE OF BELOW CODE LINES AND MODIFY THE PASSED IN STRING TO THE
+    #     # TO ADD ANOTHER STEPS DIRECTORY, COPY AND PASTE ONE OF BELOW CODE LINES AND MODIFY THE PASSED IN STRING TO
     #     # REFLECT THE PATH TO YOUR STEPS DIRECTORY STARTING FROM THE BASE DIRECTORY "C:\Users\...\test_framework\"
     #     # Adds path to PI steps to steps_dirs
     #     steps_dirs.append(os.path.join(modified_base, "pi\steps"))
@@ -832,8 +836,9 @@ class Runner(ModelRunner):
     #
     #     # This code works by iterating through "steps_dirs" which contains the paths to our PI and UI "steps"
     #     # directories. Then the currently selected path uses os.walk, which looks at the directory it's passed and by
-    #     # default goes top-down and generates a directory tree of paths for each path location. Finally Feng's for loop
-    #     # logic makes a list of these directory trees paths and those list items are inserted into "paths
+    #     # default goes top-down and generates a directory tree of paths for each path location.
+    #     # Finally Feng's for loop logic makes a list of these directory trees paths and those list items
+    #     # are inserted into "paths
     #     paths = []
     #     for selected_path in steps_dirs:
     #         paths += [x[0] for x in os.walk(selected_path)]
@@ -874,11 +879,14 @@ class Runner(ModelRunner):
             revision don't match (thus causing potentially conflicting step libs to be loaded, which is a problem). Also
             raised if an unsupported device somehow makes it to this point.
         """
-        from utils import config_parser
+        from behave import matchers
+        from behave.step_registry import setup_step_decorators
+        from python_test_framework.utils import config_parser
+        import python_test_framework
 
         step_globals = {
             'use_step_matcher': matchers.use_step_matcher,
-            'step_matcher':     matchers.step_matcher, # -- DEPRECATING
+            'step_matcher':     matchers.step_matcher,  # -- DEPRECATING
         }
         setup_step_decorators(step_globals)
 
@@ -887,17 +895,49 @@ class Runner(ModelRunner):
         scope_step_pi_import = scope_step_ui_import = afg_step_import = awg_step_import = ""
         scope_step_files = afg_step_files = awg_step_files = []
 
-        root_dir = os.getcwd()
+        root_dir = os.path.dirname(python_test_framework.__file__)
 
-        devices, _ = config_parser.get_device_config()
+        if self.config.dry_run:
+            # [dev_name, (_, series, dev_type, revision, form_factor, _)]
+            try:
+                device_list = [('scope', (None, self.config.userdata['dry_run_scope_series'],
+                                          self.config.userdata['dry_run_scope_type'], '', None, None)),
+                               ('AFG', (None, self.config.userdata['dry_run_afg_series'],
+                                        self.config.userdata['dry_run_afg_type'], '', None, None)),
+                               ('AWG', (None, self.config.userdata['dry_run_awg_series'],
+                                        self.config.userdata['dry_run_awg_type'], '', None, None))]
+            except KeyError:
+                devices, _ = config_parser.get_device_config()
+                device_list = devices.items()
+                if not list(device_list)[0][0].startswith('scope'):
+                    raise AssertionError("No dry run devices were specified in the behave.ini file, "
+                                         "make sure that behave is running from the root of the main repository.  "
+                                         "If you are still encountering issues, find your local SQE and talk with "
+                                         "them about how to fix it.")
+        else:
+            devices, _ = config_parser.get_device_config()
+            device_list = devices.items()
 
-        for dev_name, (_, series, dev_type, revision, form_factor, _) in devices.items():
+        # for dev_name, (_, series, dev_type, revision, form_factor, _) in devices.items():
+        for dev_info in device_list:
+            dev_name = dev_info[0]
+            if isinstance(dev_info[1], tuple):
+                series = dev_info[1][1]
+                dev_type = dev_info[1][2]
+                revision = dev_info[1][3]
+                # form_factor = dev_info[1][4]
+            else:
+                series = ''
+                dev_type = ''
+                revision = ''
             # print("{} {} {}\n".format(series, dev_type, revision, form_factor))
             # dev_type = dev_name.partition(" ")[0].lower()
 
             if dev_name.startswith("scope"):
-                temp_scope_pi_step_import = "devices/scopes/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type, revision)
-                temp_scope_ui_step_import = "devices/scopes/{0}/{1}{2}/ui/all_steps.py".format(series, dev_type, revision)
+                temp_scope_pi_step_import = "bdd/devices/scopes/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type,
+                                                                                                   revision)
+                temp_scope_ui_step_import = "bdd/devices/scopes/{0}/{1}{2}/ui/all_steps.py".format(series, dev_type,
+                                                                                                   revision)
 
                 if not scope_step_pi_import and not scope_step_ui_import:
                     # If we haven't defined what scope steps we're importing yet, set and retrieve them now.
@@ -906,7 +946,7 @@ class Runner(ModelRunner):
                     if os.path.isfile(os.path.join(root_dir, temp_scope_pi_step_import)):
                         scope_step_pi_import = temp_scope_pi_step_import
                     else:
-                        scope_step_pi_import = "devices/scopes/series_5/mso/pi/all_steps.py"
+                        scope_step_pi_import = "bdd/devices/scopes/series_5/mso/pi/all_steps.py"
                         print("\nWARNING: No PI step library exists for the provided scope, which appears to be an "
                               "\"{0} {1}\". As such the MSO 5-Series PI step library has been loaded by default. Some "
                               "features or commands may not work as expected.\n".format(dev_type.upper(), series[7:]))
@@ -916,14 +956,15 @@ class Runner(ModelRunner):
                     if os.path.isfile(os.path.join(root_dir, temp_scope_ui_step_import)):
                         scope_step_ui_import = temp_scope_ui_step_import
                     else:
-                        scope_step_ui_import = "devices/scopes/series_5/mso/ui/all_steps.py"
+                        scope_step_ui_import = "bdd/devices/scopes/series_5/mso/ui/all_steps.py"
                         print("\nWARNING: No UI step library exists for the provided scope, which appears to be an "
                               "\"{0} {1}\". As such the MSO 5-Series UI step library has been loaded by default. Some "
                               "features or commands may not work as expected.\n".format(dev_type.upper(), series[7:]))
 
                     scope_step_ui_files = self._ptf_get_step_files(os.path.join(root_dir, scope_step_ui_import))
 
-                    scope_step_files = scope_step_pi_files + [x for x in scope_step_ui_files if x not in scope_step_pi_files]
+                    scope_step_files = scope_step_pi_files + [x for x in scope_step_ui_files
+                                                              if x not in scope_step_pi_files]
 
                     # print(scope_step_import)
                     # print("\nSCOPE STEP FILES")
@@ -936,13 +977,12 @@ class Runner(ModelRunner):
                                               "type, and revision.")
 
             elif dev_name.startswith("AFG"):
-                temp_afg_step_import = "devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type, revision)
+                temp_afg_step_import = "bdd/devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type,
+                                                                                               revision)
                 if not afg_step_import:
                     # If we haven't defined what AFG steps we're importing yet, set and retrieve them now.
                     afg_step_import = temp_afg_step_import
-                    # print(afg_step_import)
 
-                    # afg_step_import = "devices/sources/series_3000/afgc/pi/all_steps.py"
                     afg_step_files = self._ptf_get_step_files(os.path.join(root_dir, afg_step_import))
                     # print("\nAFG STEP FILES")
                     # for asfile in afg_step_files:
@@ -954,11 +994,11 @@ class Runner(ModelRunner):
                                               "and revision.")
 
             elif dev_name.startswith("AWG"):
-                temp_awg_step_import = "devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type, revision)
+                temp_awg_step_import = "bdd/devices/sources/{0}/{1}{2}/pi/all_steps.py".format(series, dev_type,
+                                                                                               revision)
                 if not awg_step_import:
                     # If we haven't defined what AWG steps we're importing yet, set and retrieve them now.
                     awg_step_import = temp_awg_step_import
-                    # print(awg_step_import)
 
                     awg_step_files = self._ptf_get_step_files(os.path.join(root_dir, awg_step_import))
                     # print("\nAWG STEP FILES")
@@ -971,8 +1011,8 @@ class Runner(ModelRunner):
                                               "and revision.")
 
             else:
-                raise NotImplementedError("Congrats, you magically got an unsupported device ({0}) through the config "
-                                          "parser, now go tell Joshua Sleeper or Jonathan David Ice.".format(dev_name))
+                raise AssertionError("No valid device was specified in the config file, find your local SQE and talk "
+                                     "with them about how to fix it.")
 
         default_matcher = matchers.current_matcher
         # Add each step file to Behave's step list
@@ -980,7 +1020,6 @@ class Runner(ModelRunner):
             step_module_globals = step_globals.copy()
             exec_file(step_file, step_module_globals)
             matchers.current_matcher = default_matcher
-
 
     def _ptf_get_step_files(self, step_import_file):
         """A utility function to get a list of relevant step files for the provided step import file.
@@ -1004,8 +1043,9 @@ class Runner(ModelRunner):
         # List for storing absolute paths of all step files to be parsed.
         step_files = []
         # Absolute path to the root directory of the test framework.
-        root_dir = step_import_file.partition("devices")[0]
+        root_dir = step_import_file.partition("python_test_framework")[0]
         # print("Step Import File: " + step_import_file)
+        # print("Root dir: " + root_dir)
 
         if step_import_file.endswith("all_steps.py"):
             with open(step_import_file) as imp_file:
