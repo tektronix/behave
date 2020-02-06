@@ -2,10 +2,10 @@
 """
 Common module for tag-expressions:
 
-* v1: old tag expressions (deprecating; superceeded by: cucumber-tag-expressions)
+* v1: old tag expressions (deprecating; superseded by: cucumber-tag-expressions)
 * v2: cucumber-tag-expressions
 
-.. seealso::
+.. see also::
 
     * https://docs.cucumber.io
     * https://docs.cucumber.io/cucumber/api/#tag-expressions
@@ -100,6 +100,6 @@ def select_tag_expression_parser(tag_expression_text):
         # -- CASE 2: "@foo @bar"
         return parse_tag_expression_v1
 
-    # -- OTHERWISSE: Use cucumber-tag-expressions
+    # -- OTHERWISE: Use backwards compatible tags
     # CASE: "@foo" (1 tag)
-    return parse_tag_expression_v2
+    return parse_tag_expression_v1
