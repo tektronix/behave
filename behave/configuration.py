@@ -586,8 +586,8 @@ class Configuration(object):
 
         # -- ATTRIBUTE-NAME-CLEANUP:
         self.tag_expression = None
-        self.tags = None
         self._tags = self.tags
+        self.tags = None
         if isinstance(self.default_tags, six.string_types):
             self.default_tags = self.default_tags.split()
 
