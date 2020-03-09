@@ -874,7 +874,7 @@ class Runner(ModelRunner):
         """
         from behave import matchers
         from behave.step_registry import setup_step_decorators
-        from python_test_framework.utils import config_parser
+        from python_test_framework.utils import device_management
         import python_test_framework
 
         step_globals = {
@@ -893,36 +893,32 @@ class Runner(ModelRunner):
         if self.config.dry_run:
             # [dev_name, (_, series, dev_type, revision, form_factor, _)]
             try:
-                device_list = [('scope', (None, self.config.userdata['dry_run_scope_series'],
-                                          self.config.userdata['dry_run_scope_type'], '', None, None)),
-                               ('AFG', (None, self.config.userdata['dry_run_afg_series'],
-                                        self.config.userdata['dry_run_afg_type'], '', None, None)),
-                               ('AWG', (None, self.config.userdata['dry_run_awg_series'],
-                                        self.config.userdata['dry_run_awg_type'], '', None, None))]
+                devices = {}
+                devices['scope'].series = self.config.userdata['dry_run_scope_series']
+                devices['scope'].type = self.config.userdata['dry_run_scope_type']
+                devices['scope'].revision = ''
+                devices['AFG'].series = self.config.userdata['dry_run_afg_series']
+                devices['AFG'].type = self.config.userdata['dry_run_afg_type']
+                devices['AFG'].revision = ''
+                devices['AWG'].series = self.config.userdata['dry_run_awg_series']
+                devices['AWG'].type = self.config.userdata['dry_run_awg_type']
+                devices['AWG'].revision = ''
             except KeyError:
-                devices, _ = config_parser.get_device_config()
-                device_list = devices.items()
-                if not list(device_list)[0][0].startswith('scope'):
+                dm = device_management.DeviceManager()
+                devices = dm._devices
+                if not [devices[dev_name].startswith('scope') for dev_name in devices]:
                     raise AssertionError("No dry run devices were specified in the behave.ini file, "
                                          "make sure that behave is running from the root of the main repository.  "
                                          "If you are still encountering issues, find your local SQE and talk with "
                                          "them about how to fix it.")
         else:
-            devices, _ = config_parser.get_device_config()
-            device_list = devices.items()
+            dm = device_management.DeviceManager()
+            devices = dm._devices
 
-        # for dev_name, (_, series, dev_type, revision, form_factor, _) in devices.items():
-        for dev_info in device_list:
-            dev_name = dev_info[0]
-            if isinstance(dev_info[1], tuple):
-                series = dev_info[1][1]
-                dev_type = dev_info[1][2]
-                revision = dev_info[1][3]
-                # form_factor = dev_info[1][4]
-            else:
-                series = ''
-                dev_type = ''
-                revision = ''
+        for dev_name in devices:
+            series = devices[dev_name].series
+            dev_type = devices[dev_name].type.lower()
+            revision = devices[dev_name].revision
             # print("{} {} {}\n".format(series, dev_type, revision, form_factor))
             # dev_type = dev_name.partition(" ")[0].lower()
 
