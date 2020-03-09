@@ -722,7 +722,6 @@ class Runner(ModelRunner):
         # Get the root. This is not guaranteed to be "/" because Windows.
         root_dir = path_getrootdir(base_dir)
         new_base_dir = base_dir
-        environment_file_dir = os.path.dirname(temp_environment.__file__)
         steps_dir = self.config.steps_dir
         environment_file = self.config.environment_file
 
@@ -735,12 +734,6 @@ class Runner(ModelRunner):
             if os.path.isfile(os.path.join(new_base_dir, environment_file)):
                 break
             if new_base_dir == root_dir:
-                break
-
-            if self.config.verbose:
-                print("Trying environment file directory:", environment_file_dir)
-            if os.path.isfile(os.path.join(environment_file_dir, environment_file)):
-                new_base_dir = environment_file_dir
                 break
 
             new_base_dir = os.path.dirname(new_base_dir)
